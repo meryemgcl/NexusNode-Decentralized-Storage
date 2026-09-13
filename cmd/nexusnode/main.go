@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,84 +17,93 @@ import (
 
 func main() {
 	port := flag.Int("port", 0, "Port to listen on (0 for random)")
-	fileToChunk := flag.String("chunk", "", "File to split into shards")
-	filesToAssemble := flag.String("assemble", "", "Comma separated list of shards to assemble (use 'missing' for lost shards)")
-	outputFile := flag.String("out", "restored_file", "Output file for assembled shards")
-	
+	fileToChunk := flag.String("chunk", "", "File to split into encrypted shards")
+	filesToAssemble := flag.String("assemble", "", "Comma-separated list of shard paths (use 'missing' for unavailable shards)")
+	metaFile := flag.String("meta", "", "Path to the .meta.json file (required for -assemble)")
+	outputFile := flag.String("out", "restored_file", "Output path for the assembled file")
 	dataShards := flag.Int("data", 10, "Number of data shards")
 	parityShards := flag.Int("parity", 4, "Number of parity shards")
-	encryptionKeyStr := flag.String("key", "0123456789abcdef0123456789abcdef", "AES-256 Encryption key (must be exactly 32 bytes)")
-	
+	encryptionKeyStr := flag.String("key", "", "AES-256 encryption key (exactly 32 characters, required)")
+
 	flag.Parse()
 
-	if len(*encryptionKeyStr) != 32 {
-		log.Fatalf("Encryption key must be exactly 32 bytes long.")
-	}
-	encKey := []byte(*encryptionKeyStr)
+	// Configure structured logging.
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	// 1. Sharding Operations
+	// --- Sharding operation ---
 	if *fileToChunk != "" {
-		fmt.Printf("Splitting file: %s (Data Shards: %d, Parity Shards: %d)\n", *fileToChunk, *dataShards, *parityShards)
+		encKey := requireKey(*encryptionKeyStr)
+		slog.Info("splitting file", "path", *fileToChunk, "data_shards", *dataShards, "parity_shards", *parityShards)
 		outDir := filepath.Dir(*fileToChunk)
-		
-		chunkPaths, err := sharding.SplitFile(*fileToChunk, *dataShards, *parityShards, encKey, outDir)
+
+		shardPaths, metaPath, err := sharding.SplitFile(*fileToChunk, *dataShards, *parityShards, encKey, outDir)
 		if err != nil {
-			log.Fatalf("Error chunking file: %v", err)
+			log.Fatalf("error: %v", err)
 		}
-		
-		fmt.Println("File split and encrypted into shards:")
-		for _, p := range chunkPaths {
-			fmt.Printf(" - %s\n", p)
+
+		fmt.Printf("File split into %d shards:\n", len(shardPaths))
+		for _, p := range shardPaths {
+			fmt.Printf("  %s\n", p)
 		}
+		fmt.Printf("Metadata: %s\n", metaPath)
 		return
 	}
 
-	// 2. Assembler Operations
+	// --- Assembly operation ---
 	if *filesToAssemble != "" {
+		if *metaFile == "" {
+			log.Fatal("error: -meta flag is required when using -assemble")
+		}
+		encKey := requireKey(*encryptionKeyStr)
+
 		chunks := strings.Split(*filesToAssemble, ",")
-		
-		// If user explicitly writes 'missing', we treat it as an empty string (missing shard)
 		for i, c := range chunks {
 			if strings.TrimSpace(c) == "missing" {
 				chunks[i] = ""
 			}
 		}
 
-		fmt.Printf("Assembling %d shards into %s\n", len(chunks), *outputFile)
-		err := sharding.AssembleShards(chunks, *dataShards, *parityShards, encKey, *outputFile)
-		if err != nil {
-			log.Fatalf("Error assembling shards: %v", err)
+		slog.Info("assembling shards", "count", len(chunks), "output", *outputFile)
+		if err := sharding.AssembleShards(chunks, *metaFile, encKey, *outputFile); err != nil {
+			log.Fatalf("error: %v", err)
 		}
-		fmt.Println("File assembled successfully.")
 		return
 	}
 
-	// 3. Network Node Operations
-	log.Println("Starting NexusNode...")
+	// --- P2P Node operation ---
+	slog.Info("starting NexusNode...")
 	node, err := network.NewNode(*port)
 	if err != nil {
-		log.Fatalf("Failed to start node: %v", err)
+		log.Fatalf("failed to start node: %v", err)
 	}
 
-	log.Printf("Node started. Listening on:")
 	for _, addr := range node.Host.Addrs() {
-		log.Printf(" - %s/p2p/%s\n", addr, node.Host.ID())
+		slog.Info("listening", "addr", fmt.Sprintf("%s/p2p/%s", addr, node.Host.ID()))
 	}
 
-	// Start mDNS discovery
 	rendezvous := "nexusnode-discovery-v1"
-	log.Printf("Setting up mDNS discovery with rendezvous string: %s\n", rendezvous)
+	slog.Info("starting mDNS discovery", "rendezvous", rendezvous)
 	if err := node.SetupDiscovery(rendezvous); err != nil {
-		log.Fatalf("Failed to set up discovery: %v", err)
+		log.Fatalf("failed to set up discovery: %v", err)
 	}
 
-	// Wait for a SIGINT or SIGTERM signal
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
-	log.Println("Shutting down node...")
-
+	slog.Info("shutting down node...")
 	if err := node.Host.Close(); err != nil {
-		panic(err)
+		log.Fatalf("error closing host: %v", err)
 	}
+}
+
+// requireKey validates and returns the encryption key.
+// Exits with a clear error message if the key is missing or wrong length.
+func requireKey(keyStr string) []byte {
+	if keyStr == "" {
+		log.Fatal("error: -key is required. Provide a 32-character AES-256 encryption key.")
+	}
+	if len(keyStr) != 32 {
+		log.Fatalf("error: -key must be exactly 32 characters, got %d", len(keyStr))
+	}
+	return []byte(keyStr)
 }
