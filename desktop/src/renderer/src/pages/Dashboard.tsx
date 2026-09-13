@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Server, Database, ShieldCheck, AlertTriangle } from 'lucide-react'
 import type { NodeStatus } from '../types'
@@ -60,6 +60,14 @@ export default function Dashboard() {
       : status.networkHealth >= 50
       ? 'text-nexus-yellow'
       : 'text-nexus-red'
+
+  // Stabilize random storage display values across re-renders.
+  // useMemo ensures these values are computed once per status change, not per render.
+  const nodeSizes = useMemo(
+    () => Array.from({ length: status.totalNodes }, () => Math.floor(Math.random() * 512 + 64)),
+    [status.totalNodes]
+  )
+
 
   return (
     <div className="p-6 space-y-6">
@@ -142,7 +150,7 @@ export default function Dashboard() {
                   <span className="text-sm font-mono">node-{String(i + 1).padStart(2, '0')}</span>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-nexus-muted text-xs">{isOnline ? `${Math.floor(Math.random() * 512 + 64)} MB` : '—'}</span>
+                  <span className="text-nexus-muted text-xs">{isOnline ? `${nodeSizes[i]} MB` : '—'}</span>
                   <span className={isOnline ? 'badge-green' : 'badge-red'}>
                     {isOnline ? 'online' : 'offline'}
                   </span>

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -23,54 +24,50 @@ func main() {
 	outputFile := flag.String("out", "restored_file", "Output path for the assembled file")
 	dataShards := flag.Int("data", 10, "Number of data shards")
 	parityShards := flag.Int("parity", 4, "Number of parity shards")
-	encryptionKeyStr := flag.String("key", "", "AES-256 encryption key (exactly 32 characters, required)")
 
 	flag.Parse()
 
 	// Configure structured logging.
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	// --- Sharding operation ---
-	if *fileToChunk != "" {
-		encKey := requireKey(*encryptionKeyStr)
-		slog.Info("splitting file", "path", *fileToChunk, "data_shards", *dataShards, "parity_shards", *parityShards)
-		outDir := filepath.Dir(*fileToChunk)
+	// --- Sharding or Assembly: both require the encryption key ---
+	if *fileToChunk != "" || *filesToAssemble != "" {
+		encKey := readKeyFromStdin()
 
-		shardPaths, metaPath, err := sharding.SplitFile(*fileToChunk, *dataShards, *parityShards, encKey, outDir)
-		if err != nil {
-			log.Fatalf("error: %v", err)
-		}
-
-		fmt.Printf("File split into %d shards:\n", len(shardPaths))
-		for _, p := range shardPaths {
-			fmt.Printf("  %s\n", p)
-		}
-		fmt.Printf("Metadata: %s\n", metaPath)
-		return
-	}
-
-	// --- Assembly operation ---
-	if *filesToAssemble != "" {
-		if *metaFile == "" {
-			log.Fatal("error: -meta flag is required when using -assemble")
-		}
-		encKey := requireKey(*encryptionKeyStr)
-
-		chunks := strings.Split(*filesToAssemble, ",")
-		for i, c := range chunks {
-			if strings.TrimSpace(c) == "missing" {
-				chunks[i] = ""
+		if *fileToChunk != "" {
+			slog.Info("splitting file", "path", *fileToChunk, "data_shards", *dataShards, "parity_shards", *parityShards)
+			outDir := filepath.Dir(*fileToChunk)
+			shardPaths, metaPath, err := sharding.SplitFile(*fileToChunk, *dataShards, *parityShards, encKey, outDir)
+			if err != nil {
+				log.Fatalf("error: %v", err)
 			}
+			fmt.Printf("File split into %d shards:\n", len(shardPaths))
+			for _, p := range shardPaths {
+				fmt.Printf("  %s\n", p)
+			}
+			fmt.Printf("Metadata: %s\n", metaPath)
+			return
 		}
 
-		slog.Info("assembling shards", "count", len(chunks), "output", *outputFile)
-		if err := sharding.AssembleShards(chunks, *metaFile, encKey, *outputFile); err != nil {
-			log.Fatalf("error: %v", err)
+		if *filesToAssemble != "" {
+			if *metaFile == "" {
+				log.Fatal("error: -meta flag is required when using -assemble")
+			}
+			chunks := strings.Split(*filesToAssemble, ",")
+			for i, c := range chunks {
+				if strings.TrimSpace(c) == "missing" {
+					chunks[i] = ""
+				}
+			}
+			slog.Info("assembling shards", "count", len(chunks), "output", *outputFile)
+			if err := sharding.AssembleShards(chunks, *metaFile, encKey, *outputFile); err != nil {
+				log.Fatalf("error: %v", err)
+			}
+			return
 		}
-		return
 	}
 
-	// --- P2P Node operation ---
+	// --- P2P Node operation (no key required) ---
 	slog.Info("starting NexusNode...")
 	node, err := network.NewNode(*port)
 	if err != nil {
@@ -96,14 +93,17 @@ func main() {
 	}
 }
 
-// requireKey validates and returns the encryption key.
-// Exits with a clear error message if the key is missing or wrong length.
-func requireKey(keyStr string) []byte {
-	if keyStr == "" {
-		log.Fatal("error: -key is required. Provide a 32-character AES-256 encryption key.")
+// readKeyFromStdin reads the AES-256 encryption key from the first line of stdin.
+// This avoids exposing the key in process argument lists (ps aux, Task Manager, etc.).
+func readKeyFromStdin() []byte {
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		log.Fatalf("error: failed to read encryption key from stdin: %v", err)
 	}
-	if len(keyStr) != 32 {
-		log.Fatalf("error: -key must be exactly 32 characters, got %d", len(keyStr))
+	key := strings.TrimRight(line, "\r\n")
+	if len(key) != 32 {
+		log.Fatalf("error: encryption key must be exactly 32 characters, got %d", len(key))
 	}
-	return []byte(keyStr)
+	return []byte(key)
 }

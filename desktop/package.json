@@ -11,28 +11,28 @@
     "make": "electron-forge make"
   },
   "dependencies": {
+    "lucide-react": "^0.395.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.23.1",
-    "recharts": "^2.12.7",
-    "lucide-react": "^0.395.0"
+    "react-router-dom": "^7.18.3",
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.4.0",
-    "@electron-forge/maker-deb": "^7.4.0",
-    "@electron-forge/maker-squirrel": "^7.4.0",
-    "@electron-forge/maker-zip": "^7.4.0",
-    "@electron-forge/plugin-vite": "^7.4.0",
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-deb": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "@electron-forge/plugin-vite": "^7.11.2",
     "@types/node": "^20.14.9",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
-    "electron": "^31.2.0",
-    "electron-vite": "^2.3.0",
+    "electron": "^44.3.0",
+    "electron-vite": "^5.0.0",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.5",
     "typescript": "^5.5.3",
-    "vite": "^5.3.4"
+    "vite": "^8.3.0"
   }
 }
