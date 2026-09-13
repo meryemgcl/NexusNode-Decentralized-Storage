@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-nexus-bg text-gray-100 antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  ::-webkit-scrollbar { @apply w-1.5; }
+  ::-webkit-scrollbar-track { @apply bg-nexus-bg; }
+  ::-webkit-scrollbar-thumb { @apply bg-nexus-border rounded-full; }
+}
+
+@layer components {
+  .card {
+    @apply bg-nexus-surface border border-nexus-border rounded-xl p-5;
+  }
+  .btn-primary {
+    @apply bg-nexus-accent hover:bg-blue-400 text-nexus-bg font-semibold px-4 py-2 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply text-nexus-muted hover:text-gray-100 px-3 py-2 rounded-lg transition-colors duration-150;
+  }
+  .input {
+    @apply bg-nexus-bg border border-nexus-border rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-nexus-muted focus:outline-none focus:border-nexus-accent transition-colors w-full;
+  }
+  .badge-green  { @apply inline-flex items-center gap-1 text-xs font-medium text-nexus-green bg-nexus-green/10 px-2 py-0.5 rounded-full; }
+  .badge-red    { @apply inline-flex items-center gap-1 text-xs font-medium text-nexus-red   bg-nexus-red/10   px-2 py-0.5 rounded-full; }
+  .badge-yellow { @apply inline-flex items-center gap-1 text-xs font-medium text-nexus-yellow bg-nexus-yellow/10 px-2 py-0.5 rounded-full; }
+}

@@ -5,6 +5,17 @@
 *.so
 *.dylib
 
+# Desktop build outputs
+desktop/node_modules/
+desktop/out/
+desktop/.vite/
+
+
+*.exe~
+*.dll
+*.so
+*.dylib
+
 # Test binary, built with `go test -c`
 *.test
 
