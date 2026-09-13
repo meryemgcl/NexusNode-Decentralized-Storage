@@ -16,20 +16,32 @@ import (
 
 func main() {
 	port := flag.Int("port", 0, "Port to listen on (0 for random)")
-	fileToChunk := flag.String("chunk", "", "File to split into chunks")
-	filesToAssemble := flag.String("assemble", "", "Comma separated list of chunks to assemble")
-	outputFile := flag.String("out", "restored_file", "Output file for assembled chunks")
+	fileToChunk := flag.String("chunk", "", "File to split into shards")
+	filesToAssemble := flag.String("assemble", "", "Comma separated list of shards to assemble (use 'missing' for lost shards)")
+	outputFile := flag.String("out", "restored_file", "Output file for assembled shards")
+	
+	dataShards := flag.Int("data", 10, "Number of data shards")
+	parityShards := flag.Int("parity", 4, "Number of parity shards")
+	encryptionKeyStr := flag.String("key", "0123456789abcdef0123456789abcdef", "AES-256 Encryption key (must be exactly 32 bytes)")
+	
 	flag.Parse()
+
+	if len(*encryptionKeyStr) != 32 {
+		log.Fatalf("Encryption key must be exactly 32 bytes long.")
+	}
+	encKey := []byte(*encryptionKeyStr)
 
 	// 1. Sharding Operations
 	if *fileToChunk != "" {
-		fmt.Printf("Chunking file: %s\n", *fileToChunk)
+		fmt.Printf("Splitting file: %s (Data Shards: %d, Parity Shards: %d)\n", *fileToChunk, *dataShards, *parityShards)
 		outDir := filepath.Dir(*fileToChunk)
-		chunkPaths, err := sharding.ChunkFile(*fileToChunk, 1024*1024, outDir) // 1 MB chunks
+		
+		chunkPaths, err := sharding.SplitFile(*fileToChunk, *dataShards, *parityShards, encKey, outDir)
 		if err != nil {
 			log.Fatalf("Error chunking file: %v", err)
 		}
-		fmt.Println("File split into chunks:")
+		
+		fmt.Println("File split and encrypted into shards:")
 		for _, p := range chunkPaths {
 			fmt.Printf(" - %s\n", p)
 		}
@@ -39,10 +51,18 @@ func main() {
 	// 2. Assembler Operations
 	if *filesToAssemble != "" {
 		chunks := strings.Split(*filesToAssemble, ",")
-		fmt.Printf("Assembling %d chunks into %s\n", len(chunks), *outputFile)
-		err := sharding.AssembleChunks(chunks, *outputFile)
+		
+		// If user explicitly writes 'missing', we treat it as an empty string (missing shard)
+		for i, c := range chunks {
+			if strings.TrimSpace(c) == "missing" {
+				chunks[i] = ""
+			}
+		}
+
+		fmt.Printf("Assembling %d shards into %s\n", len(chunks), *outputFile)
+		err := sharding.AssembleShards(chunks, *dataShards, *parityShards, encKey, *outputFile)
 		if err != nil {
-			log.Fatalf("Error assembling chunks: %v", err)
+			log.Fatalf("Error assembling shards: %v", err)
 		}
 		fmt.Println("File assembled successfully.")
 		return

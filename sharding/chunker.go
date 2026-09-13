@@ -2,45 +2,53 @@ package sharding
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/klauspost/reedsolomon"
+	"github.com/meryemgcl/NexusNode-Decentralized-Storage/crypto"
 )
 
-// ChunkFile splits a file into multiple chunks of the given size.
-// Returns a list of the chunk file paths.
-func ChunkFile(filePath string, chunkSize int64, outputDir string) ([]string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	fileInfo, err := file.Stat()
+// SplitFile splits a file into data shards and parity shards using Reed-Solomon,
+// encrypts each shard using AES-256, and writes them to the output directory.
+// The encryption key must be 32 bytes.
+func SplitFile(filePath string, dataShards, parityShards int, encryptionKey []byte, outputDir string) ([]string, error) {
+	b, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Calculate number of chunks
-	fileSize := fileInfo.Size()
-	numChunks := (fileSize + chunkSize - 1) / chunkSize
+	enc, err := reedsolomon.New(dataShards, parityShards)
+	if err != nil {
+		return nil, err
+	}
+
+	// Split the file into shards
+	shards, err := enc.Split(b)
+	if err != nil {
+		return nil, err
+	}
+
+	// Encode parity
+	err = enc.Encode(shards)
+	if err != nil {
+		return nil, err
+	}
+
 	var chunkPaths []string
+	baseName := filepath.Base(filePath)
 
-	buffer := make([]byte, chunkSize)
-
-	for i := int64(0); i < numChunks; i++ {
-		bytesRead, err := file.Read(buffer)
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
-		if bytesRead == 0 {
-			break
+	// Encrypt and write shards
+	for i, shard := range shards {
+		encryptedShard, err := crypto.Encrypt(encryptionKey, shard)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt shard %d: %v", i, err)
 		}
 
-		chunkName := fmt.Sprintf("%s.chunk.%d", filepath.Base(filePath), i)
+		chunkName := fmt.Sprintf("%s.shard.%d", baseName, i)
 		chunkPath := filepath.Join(outputDir, chunkName)
 
-		err = os.WriteFile(chunkPath, buffer[:bytesRead], 0644)
+		err = os.WriteFile(chunkPath, encryptedShard, 0644)
 		if err != nil {
 			return nil, err
 		}
